@@ -447,7 +447,7 @@ void loop()
 
    showPath= ((moveItemsNum != 0) && (digitalRead(READY_RECEIVE_PATH_PIN)== LOW));
 
-   if (hedgehog_pos_updated)
+   if (true)
      {// new data from hedgehog available
        hedgehog_pos_updated= 0;// clear new data flag 
 
