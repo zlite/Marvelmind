@@ -25,6 +25,8 @@
   */
 
 #include <LiquidCrystal.h>
+#include <stdlib.h>
+#include <avr/dtostrf.h>
 
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -51,6 +53,8 @@ byte hedgehog_flags= 0;
 byte hedgehog_address= 0;
 int hedgehog_pos_updated;// flag of new data from hedgehog received
 
+bool high_resolution_mode;
+
 ///
 
 #define HEDGEHOG_BUF_SIZE 64 
@@ -61,7 +65,9 @@ byte hedgehog_packet_size;
 byte hedgehog_packet_type;
 int hedgehog_packet_id;
 
-typedef union {byte b[2]; unsigned int w;} uni_8x2_16;
+typedef union {byte b[2]; unsigned int w;int wi;} uni_8x2_16;
+typedef union {byte b[4];float f;unsigned long v32;long vi32;} uni_8x4_32;
+
 
 typedef struct {
   byte moveType;
@@ -157,14 +163,26 @@ int check_packet_data_size(byte packet_type, unsigned int packet_id, byte size, 
 
 void process_stream_packet()
 {
+   uni_8x2_16 un16;
+   uni_8x4_32 un32;
    if (hedgehog_packet_id == HEDGEHOG_POS_PACKET_ID)
       {// packet of hedgehog position
-         hedgehog_x= int(hedgehog_serial_buf[9]) + (int(hedgehog_serial_buf[10])<<8);
-         hedgehog_y= int(hedgehog_serial_buf[11]) + (int(hedgehog_serial_buf[12])<<8);// coordinates of hedgehog (X,Y), cm
-         hedgehog_z= int(hedgehog_serial_buf[13]) + (int(hedgehog_serial_buf[14])<<8);// height of hedgehog, cm (FW V3.97+)
-         hedgehog_flags= hedgehog_serial_buf[15];
-         hedgehog_address= hedgehog_serial_buf[16];
-         hedgehog_pos_updated= 1;// flag of new data from hedgehog received
+              // coordinates of hedgehog (X,Y), cm ==> mm
+              un16.b[0]= hedgehog_serial_buf[9];
+              un16.b[1]= hedgehog_serial_buf[10];
+              hedgehog_x= 10*long(un16.wi);
+
+              un16.b[0]= hedgehog_serial_buf[11];
+              un16.b[1]= hedgehog_serial_buf[12];
+              hedgehog_y= 10*long(un16.wi);
+              
+              // height of hedgehog, cm==>mm (FW V3.97+)
+              un16.b[0]= hedgehog_serial_buf[13];
+              un16.b[1]= hedgehog_serial_buf[14];
+              hedgehog_z= 10*long(un16.wi);
+              
+              hedgehog_pos_updated= 1;// flag of new data from hedgehog received
+              high_resolution_mode= false;
 
          if (hedgehog_flags&0x08)
           {// request for writing data
@@ -205,6 +223,8 @@ void loop_hedgehog()
  int packet_received;
  int packet_id;
  int i,n,ofs;
+ uni_8x2_16 un16;
+ uni_8x4_32 un32;
 
   total_received_in_loop= 0;
   packet_received= 0;
@@ -316,6 +336,8 @@ void loop_hedgehog()
         {// checksum success
           switch(hedgehog_packet_type)
           {
+            Serial.print("Data type: ");
+            Serial.println(hedgehog_packet_type);
             case PACKET_TYPE_STREAM_FROM_HEDGE:
              {
                process_stream_packet();
@@ -447,7 +469,7 @@ void loop()
 
    showPath= ((moveItemsNum != 0) && (digitalRead(READY_RECEIVE_PATH_PIN)== LOW));
 
-   if (true)
+   if (!showPath)
      {// new data from hedgehog available
        hedgehog_pos_updated= 0;// clear new data flag 
 
